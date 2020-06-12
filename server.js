@@ -50,12 +50,11 @@ app.get('/profile/:id', (req,res) => {
     }
 })
 
-app.post('/image', (req,res) =>{
+app.put('/image', (req,res) =>{
     const { id } = req.body;
     let found = false;
     database.users.forEach(user => {
         if(user.id === id){
-            res.json(user);
             found = true;
             user.entries++;
             return res.json(user.entries);
@@ -72,13 +71,16 @@ app.post('/image', (req,res) =>{
 // });
 
 app.post('/register', (req,res) => {
-    const { id, name, password } = req.body;
-    bcrypt.hash(password, null, null, (err, hash) => {
-        console.log(hash);
-    });
+    const { email, name, id, entries, joined } = req.body;
+    // bcrypt.hash(password, null, null, (err, hash) => {
+    //     console.log(hash);
+    // });
     database.users.push({
+        name: name,
+        email: email,
         id: id,
-        name: name
+        entries: entries,
+        joined: joined
     })
     res.json(database.users[database.users.length - 1]);
 })
@@ -87,14 +89,13 @@ app.post('/signin', (req,res) =>{
     // bcrypt.compare(res.body.password, /* Get a hash from the login from the users' DB */'de3rewd' , function(err, result) {
     //     //result === false OR result === true;
     // });
-    // if(req.body.id === database.users[0].id && req.body.name === database.users[0].name){
-    //     res.json('Success!');
+    // if(req.body.password === database.users[0].password && req.body.name === database.users[0].name){
+    //     res.json(database.users[0]);
     // }
     // else{
     //     res.status(400).send('Error logging in');
     // }
-    console.log(req.body);
-    res.json('success');
+    res.json(req.body);
 })
 
 app.listen(3000);
