@@ -2,35 +2,26 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt-nodejs');
 const cors = require('cors');
+const knex = require('knex');
+
+const db = knex({
+    client: 'pg',
+    connection: {
+      host : '127.0.0.1',
+      user : 'devan',
+      password : '',
+      database : 'smartbrain'
+    }
+  });
+
+db.select('*').from('users').then(data => {
+    console.log(data);
+})
 
 const app = express();
 
 app.use(bodyParser.json());         //When we do "req.body"; body comes in a weird format, but this makes the object a lot more accessible.
 app.use(cors());                    //This is used to remove the issue of chrome blocking access to our backend server because of security requirements.
-
-const database = {
-    users:[
-        {
-            id: '1234',
-            name: 'abooga',
-            password: 'cookies',
-            entries: 0
-        },
-        {
-            id: '123',
-            name: 'abod',
-            password: 'bananas',
-            entries: 0
-        }
-    ],
-    login: [
-        {
-            id: '123',
-            name: 'abooga',
-            hash: ''
-        }
-    ]
-}
 
 app.get('/', (req,res) => {
     res.json(database.users);
@@ -38,31 +29,27 @@ app.get('/', (req,res) => {
 
 app.get('/profile/:id', (req,res) => {
     const { id } = req.params;
-    let found = false;
-    database.users.forEach(user => {
-        if(user.id === id){
-            res.json(user);
-            found = true;
+    db.select('*').from('users').where({
+        id: id
+    })
+    .then(user => {
+        if(user.length){
+            res.json(user[0]);
         }
-    });
-    if(!found){
-        res.status(400).json("No such user");   
-    }
+        res.status(400).json('Not found');
+    })
+    .catch(err => res.status(400).json("Error getting user"));
 })
 
 app.put('/image', (req,res) =>{
     const { id } = req.body;
-    let found = false;
-    database.users.forEach(user => {
-        if(user.id === id){
-            found = true;
-            user.entries++;
-            return res.json(user.entries);
-        }
-    });
-    if(!found){
-        res.status(400).json("No such user");   
-    }
+    db('users').where('id','=',id)
+    .increment('entries',1)
+    .returning('entries')
+    .then(entries => {
+        res.json(entries[0]);
+    })
+    .catch(err => res.status(400).json("Unable to get entries"));
 })
 
 
@@ -71,31 +58,51 @@ app.put('/image', (req,res) =>{
 // });
 
 app.post('/register', (req,res) => {
-    const { email, name, id, entries, joined } = req.body;
-    // bcrypt.hash(password, null, null, (err, hash) => {
-    //     console.log(hash);
-    // });
-    database.users.push({
-        name: name,
-        email: email,
-        id: id,
-        entries: entries,
-        joined: joined
+    const { email, name, password } = req.body;
+    const hash = bcrypt.hashSync(password);
+    db.transaction(trx => {
+        trx.insert({
+            hash: hash,
+            email: email
+        })
+        .into('login')
+        .returning('email')
+        .then(loginEmail => {
+            return trx('users')
+                .returning('*')
+                .insert({
+                    email: loginEmail[0],
+                    name: name,
+                    joined: new Date()
+                })
+                .then(user => {
+                    res.json(user[0]);
+                })
+        })
+        .then(trx.commit)
+        .catch(trx.rollback)
     })
-    res.json(database.users[database.users.length - 1]);
-})
+    .catch(err => res.status(400).json("Unable to register!"));
+}) 
 
 app.post('/signin', (req,res) =>{
-    // bcrypt.compare(res.body.password, /* Get a hash from the login from the users' DB */'de3rewd' , function(err, result) {
-    //     //result === false OR result === true;
-    // });
-    // if(req.body.password === database.users[0].password && req.body.name === database.users[0].name){
-    //     res.json(database.users[0]);
-    // }
-    // else{
-    //     res.status(400).send('Error logging in');
-    // }
-    res.json(req.body);
+    db.select('email', 'hash').from('login')
+    .where('email', '=', req.body.email)
+    .then(data => {
+        const isValid = bcrypt.compareSync(req.body.password, data[0].hash);
+        if(isValid){
+            return db.select('*').from('users')
+            .where('email','=',req.body.email)
+            .then(user => {
+                res.json(user[0]);
+            })
+            .catch(err => res.status(400).json('Unable to get user'))
+        }
+        else{
+            res.status(400).json('wrong credentials')
+        }
+    })
+    .catch(err => res.status(400).json('wrong credentials'));
 })
 
 app.listen(3000);
